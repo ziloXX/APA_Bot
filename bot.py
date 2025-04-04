@@ -133,7 +133,12 @@ async def addteam(ctx, generation, style, url):
         return
     new_team = {"generation": generation, "style": style, "url": url}
     save_team_to_db(new_team)
-    await ctx.send(f"Equipo agregado correctamente: {new_team}")
+    await ctx.send(
+    f"✅ Equipo agregado correctamente:\n"
+    f"**Generación:** {generation}\n"
+    f"**Estilo:** {style}\n"
+    f"**Link:** [Haz clic aquí]({url})"
+)
 
 @bot.command()
 @commands.has_permissions(administrator=True)
