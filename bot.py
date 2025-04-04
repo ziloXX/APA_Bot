@@ -5,17 +5,24 @@ from bs4 import BeautifulSoup
 import json
 import os
 import re
+from pymongo import MongoClient
+import asyncio
+
+# Conexión a MongoDB
+MONGO_URI = os.environ["MONGO_URI"]
+client = MongoClient(MONGO_URI)
+db = client["APA_Bot"]
+teams_collection = db["Teams"]
+cache_collection = db["Cache"]
 
 # Configuración del bot
 TOKEN = os.environ["TOKEN"]
 PREFIX = "!"
-CACHE_FILE = "pokemon_cache.json"
 POKEMON_LIST_FILE = "pokemon_list.json"
-TEAMS_FILE = "teams.json"
 
 intents = discord.Intents.default()
 intents.message_content = True
-intents.reactions = True  # Necesario para detectar reacciones
+intents.reactions = True
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 
 # Cargar la lista de Pokémon al iniciar el bot
@@ -23,127 +30,136 @@ with open(POKEMON_LIST_FILE, "r", encoding="utf-8") as f:
     pokemon_data = json.load(f)
     POKEMON_NAMES = set(pokemon.lower() for pokemon in pokemon_data["pokemon"])
 
-# Funciones auxiliares
+# Funciones auxiliares optimizadas para MongoDB
 
-def load_teams_from_json():
-    """Carga los equipos desde un archivo teams.json."""
-    try:
-        with open(TEAMS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return []  # Retorna una lista vacía si el archivo no existe o está corrupto
+def get_cached_pokemon(url):
+    doc = cache_collection.find_one({"url": url})
+    return doc["pokemon"] if doc else None
 
-def save_teams_to_json(teams):
-    """Guarda los equipos en el archivo teams.json."""
-    with open(TEAMS_FILE, "w", encoding="utf-8") as f:
-        json.dump(teams, f, ensure_ascii=False, indent=2)
-
-def load_cache():
-    """Carga el caché de Pokémon desde pokemon_cache.json."""
-    if os.path.exists(CACHE_FILE):
-        with open(CACHE_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
-
-def save_cache(cache):
-    """Guarda el caché actualizado en pokemon_cache.json."""
-    with open(CACHE_FILE, "w", encoding="utf-8") as f:
-        json.dump(cache, f, ensure_ascii=False, indent=2)
+def cache_pokemon(url, pokemon_list):
+    cache_collection.update_one(
+        {"url": url},
+        {"$set": {"pokemon": pokemon_list}},
+        upsert=True
+    )
 
 def get_team_pokemon(url):
-    """Extrae los 6 nombres de Pokémon de una URL de PokePast desde la primera línea de cada <pre>."""
-    cache = load_cache()
-    if url in cache:
-        return cache[url]
+    cached = get_cached_pokemon(url)
+    if cached:
+        return cached
     try:
         response = requests.get(url)
         if response.status_code != 200:
             print(f"Error al acceder a {url}: {response.status_code}")
             return ["Error al acceder"] * 6
+
         soup = BeautifulSoup(response.text, "html.parser")
-        pokemon_blocks = soup.find_all("article")  # Contenedor de cada Pokémon
+        pokemon_blocks = soup.find_all("article")
         pokemon_list = []
 
-        for block in pokemon_blocks[:6]:  # Limitar a 6 bloques (un equipo estándar)
+        for block in pokemon_blocks[:6]:
             pre_tag = block.find("pre")
             if pre_tag:
                 pre_text = pre_tag.get_text(strip=True)
-                print(f"Texto completo del <pre>: {pre_text}")  # Depuración
                 first_line = pre_text.split("\n")[0].strip()
-                print(f"Primera línea extraída: {first_line}")  # Depuración
                 pokemon_name = first_line.split("@")[0].strip()
-                print(f"Nombre candidato: {pokemon_name}")  # Depuración
                 pokemon_name_clean = re.sub(r'\s*\(.*?\)|\s*Shiny:.*', '', pokemon_name).strip()
                 if pokemon_name_clean.lower() in POKEMON_NAMES:
                     pokemon_list.append(pokemon_name_clean)
                 else:
-                    print(f"Texto no válido encontrado: {first_line} en {url}")
                     pokemon_list.append("No encontrado")
             else:
-                print(f"No se encontró <pre> en el bloque: {block}")
                 pokemon_list.append("No encontrado")
 
         while len(pokemon_list) < 6:
             pokemon_list.append("No encontrado")
 
-        cache[url] = pokemon_list
-        save_cache(cache)
+        cache_pokemon(url, pokemon_list)
         return pokemon_list
+
     except Exception as e:
         print(f"Error al scrapear {url}: {e}")
         return ["Error al scrapear"] * 6
 
-# Comando del bot
+# Funciones de base de datos
+
+def load_teams_from_db():
+    return list(teams_collection.find({}, {"_id": 0}))
+
+def save_team_to_db(team):
+    teams_collection.insert_one(team)
+
+def delete_team_from_db(url):
+    result = teams_collection.delete_one({"url": url})
+    return result.deleted_count > 0
+
+def delete_teams_by_generation_and_pokemon(generation, pokemon_name):
+    pokemon_name = pokemon_name.lower()
+    teams = load_teams_from_db()
+    deleted_count = 0
+    for team in teams:
+        if team.get("generation", "").lower() != generation.lower():
+            continue
+        team_pokemon = get_team_pokemon(team.get("url"))
+        if pokemon_name in [p.lower() for p in team_pokemon]:
+            result = teams_collection.delete_one({"url": team["url"]})
+            if result.deleted_count > 0:
+                deleted_count += 1
+    return deleted_count
+
+# Comandos del bot
+
 @bot.command()
-@commands.has_permissions(administrator=True)  # Restringe el comando a administradores
+@commands.has_permissions(administrator=True)
 async def addteam(ctx, generation, style, url):
-    """Permite a administradores agregar un equipo al archivo teams.json.
-    Uso: !addteam [generation] [style] [url pokepast]"""
-    # Validar que la URL sea de PokePast (opcional, pero recomendado)
     if not url.startswith("https://pokepast.es/"):
         await ctx.send("Error: La URL debe ser de PokePast (https://pokepast.es/).")
         return
-
-    # Cargar equipos existentes
-    teams = load_teams_from_json()
-    # Crear nuevo equipo con los valores originales
-    new_team = {
-        "generation": generation,  # Sin .lower()
-        "style": style,           # Sin .lower()
-        "url": url
-    }
-    teams.append(new_team)
-    # Guardar los equipos actualizados
-    save_teams_to_json(teams)
+    new_team = {"generation": generation, "style": style, "url": url}
+    save_team_to_db(new_team)
     await ctx.send(f"Equipo agregado correctamente: {new_team}")
 
 @bot.command()
+@commands.has_permissions(administrator=True)
+async def deleteteam(ctx, url):
+    if not url.startswith("https://pokepast.es/"):
+        await ctx.send("Error: La URL debe ser de PokePast (https://pokepast.es/).")
+        return
+    eliminado = delete_team_from_db(url)
+    if eliminado:
+        await ctx.send(f"✅ Equipo con URL `{url}` eliminado correctamente.")
+    else:
+        await ctx.send(f"❌ No se encontró ningún equipo con esa URL.")
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def deletebanned(ctx, generation, *, pokemon):
+    cantidad = delete_teams_by_generation_and_pokemon(generation, pokemon)
+    if cantidad > 0:
+        await ctx.send(f"🗑️ Se eliminaron {cantidad} equipos de {generation} que contenían a **{pokemon}**.")
+    else:
+        await ctx.send(f"No se encontraron equipos con ese Pokémon en la generación especificada.")
+
+@bot.command()
 async def team(ctx, *args):
-    """Busca equipos en teams.json por generación, estilo o Pokémon con paginación."""
     if not args:
         await ctx.send("Uso: !team <generación> [estilo o Pokémon]")
         return
-
-    # Convertir argumentos a minúsculas para búsqueda insensible
     args = [arg.lower() for arg in args]
     generation = args[0]
-
-    # Cargar equipos y filtrar por generación (insensible a mayúsculas/minúsculas)
-    teams = load_teams_from_json()
+    teams = load_teams_from_db()
     filtered_teams = [team for team in teams if team.get("generation", "").lower() == generation]
 
     if not filtered_teams:
-        await ctx.send(f"No se encontraron equipos para esa generacion.")
+        await ctx.send("No se encontraron equipos para esa generacion.")
         return
 
     if len(args) > 1:
         filter_value = " ".join(args[1:])
-        # Filtrar por estilo (insensible a mayúsculas/minúsculas)
         style_teams = [team for team in filtered_teams if team.get("style", "").lower() == filter_value]
         if style_teams:
             filtered_teams = style_teams
         else:
-            # Filtrar por Pokémon (insensible a mayúsculas/minúsculas)
             final_teams = []
             for team in filtered_teams:
                 pokemon_list = get_team_pokemon(team.get("url"))
@@ -155,21 +171,17 @@ async def team(ctx, *args):
         await ctx.send("No se encontraron equipos con esos filtros.")
         return
 
-    # Configuración de paginación (5 equipos por página)
     teams_per_page = 5
     pages = [filtered_teams[i:i + teams_per_page] for i in range(0, len(filtered_teams), teams_per_page)]
     current_page = 0
 
-    # Crear el primer embed
-    color = 0x00ff00  # Color verde para el embed
+    color = 0x00ff00
     message = await ctx.send(embed=await create_embed(pages, current_page, filtered_teams, color))
 
-    # Añadir reacciones para navegar
     if len(pages) > 1:
         await message.add_reaction("⬅️")
         await message.add_reaction("➡️")
 
-    # Bucle para manejar la navegación (solo para el autor)
     author = ctx.author
     while True:
         def check(reaction, user):
@@ -188,13 +200,12 @@ async def team(ctx, *args):
             break
 
 async def create_embed(pages, page_num, all_teams, color):
-    """Crea un embed para una página específica."""
     embed = discord.Embed(title=f"Equipos encontrados (Página {page_num + 1}/{len(pages)})", color=color)
     teams = pages[page_num]
     for i, team in enumerate(teams, 1 + page_num * 5):
         team_info = f"**Estilo:** {team.get('style', 'Desconocido')}\n"
         pokemon_list = get_team_pokemon(team.get("url"))
-        if pokemon_list and all(p != "No encontrado" and p != "Error al acceder" and p != "Error al scrapear" for p in pokemon_list):
+        if pokemon_list and all(p not in ["No encontrado", "Error al acceder", "Error al scrapear"] for p in pokemon_list):
             team_info += f"**Pokémon:** {', '.join(['**' + p + '**' for p in pokemon_list])}\n"
         else:
             team_info += "**Pokémon:** No disponibles (error al scrapear o Pokémon no encontrados)\n"
@@ -202,12 +213,8 @@ async def create_embed(pages, page_num, all_teams, color):
         embed.add_field(name=f"Equipo {i}", value=team_info, inline=False)
     return embed
 
-import asyncio  # Añadido para usar async/await
-
 @bot.event
 async def on_ready():
-    """Evento que se ejecuta cuando el bot está en línea."""
     print(f"{bot.user} está en línea.")
 
-# Iniciar el bot
 bot.run(TOKEN)
