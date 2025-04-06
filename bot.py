@@ -72,19 +72,20 @@ def get_team_pokemon(url):
             if pre_tag:
                 pre_text = pre_tag.get_text(strip=True)
                 first_line = pre_text.split("\n")[0].strip()
-                raw = first_line.split("@")[0].strip()
+                pokemon_name = first_line.split("@")[0].strip()
 
-                # 👀 Si tiene paréntesis, extraemos lo de adentro como el nombre real
-                if "(" in raw and ")" in raw:
-                    name = raw[raw.find("(")+1:raw.find(")")]
+                # ✅ Si tiene nickname, extrae lo que esté entre paréntesis
+                if "(" in pokemon_name and ")" in pokemon_name:
+                    inside = pokemon_name[pokemon_name.find("(")+1:pokemon_name.find(")")]
+                    name_to_check = inside.strip()
                 else:
-                    name = raw.split()[0]
+                    name_to_check = pokemon_name.strip()
 
-                # 🔧 Normalización para comparar
-                normalized = name.lower().replace("-", " ").replace("’", "'")
+                # 🔧 Normalización
+                normalized = name_to_check.lower().replace("-", " ").replace("’", "'")
 
                 if normalized in POKEMON_NAMES:
-                    pokemon_list.append(name)
+                    pokemon_list.append(name_to_check)
                 else:
                     pokemon_list.append("No encontrado")
             else:
