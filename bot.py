@@ -73,7 +73,11 @@ def get_team_pokemon(url):
                 pre_text = pre_tag.get_text(strip=True)
                 first_line = pre_text.split("\n")[0].strip()
                 pokemon_name = first_line.split("@")[0].strip()
-                pokemon_name_clean = re.sub(r'\s*\(.*?\)|\s*Shiny:.*', '', pokemon_name).strip()
+                nickname_match = re.search(r'\(([^)]+)\)', pokemon_name)
+if nickname_match:
+    pokemon_name_clean = nickname_match.group(1).strip()
+else:
+    pokemon_name_clean = re.sub(r'\s*\(.*?\)|\s*Shiny:.*', '', pokemon_name).strip()
                 pokemon_normalized = pokemon_name_clean.lower().replace("-", " ").replace("’", "'")
                 if pokemon_normalized in POKEMON_NAMES:
                     pokemon_list.append(pokemon_name_clean)
