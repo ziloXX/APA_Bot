@@ -21,17 +21,14 @@ def run_health_check_server():
     server = HTTPServer(('0.0.0.0', 8000), HealthCheckHandler)
     server.serve_forever()
 
-# Iniciar el servidor en un hilo separado
 threading.Thread(target=run_health_check_server, daemon=True).start()
 
-# Conexión a MongoDB
 MONGO_URI = os.environ["MONGO_URI"]
 client = MongoClient(MONGO_URI)
 db = client["APA_Bot"]
 teams_collection = db["Teams"]
 cache_collection = db["Cache"]
 
-# Configuración del bot
 TOKEN = os.environ["TOKEN"]
 PREFIX = "!"
 POKEMON_LIST_FILE = "pokemon_list.json"
@@ -41,12 +38,9 @@ intents.message_content = True
 intents.reactions = True
 bot = commands.Bot(command_prefix=PREFIX, intents=intents, help_command=None)
 
-# Cargar la lista de Pokémon al iniciar el bot
 with open(POKEMON_LIST_FILE, "r", encoding="utf-8") as f:
     pokemon_data = json.load(f)
     POKEMON_NAMES = set(pokemon.lower() for pokemon in pokemon_data["pokemon"])
-
-# Funciones auxiliares optimizadas para MongoDB
 
 def get_cached_pokemon(url):
     doc = cache_collection.find_one({"url": url})
@@ -97,13 +91,15 @@ def get_team_pokemon(url):
         print(f"Error al scrapear {url}: {e}")
         return ["Error al scrapear"] * 6
 
-# Funciones de base de datos
-
 def load_teams_from_db():
     return list(teams_collection.find({}, {"_id": 0}))
 
 def save_team_to_db(team):
     teams_collection.insert_one(team)
+
+def update_team_style(url, new_style):
+    result = teams_collection.update_one({"url": url}, {"$set": {"style": new_style}})
+    return result.modified_count > 0
 
 def delete_team_from_db(url):
     result = teams_collection.delete_one({"url": url})
@@ -123,21 +119,38 @@ def delete_teams_by_generation_and_pokemon(generation, pokemon_name):
                 deleted_count += 1
     return deleted_count
 
-# Comandos del bot
-
 @bot.command()
-@commands.has_permissions(administrator=True)
-async def addteam(ctx, generation, url):
+async def addteam(ctx, generation, *args):
+    if len(args) == 1:
+        url = args[0]
+        style = ""
+    elif len(args) == 2:
+        style, url = args
+    else:
+        await ctx.send("Uso: !addteam [gen] [url] o !addteam [gen] [estilo] [url]")
+        return
+
     if not url.startswith("https://pokepast.es/"):
         await ctx.send("Error: La URL debe ser de PokePast (https://pokepast.es/).")
         return
+
     new_team = {"generation": generation, "url": url}
+    if style:
+        new_team["style"] = style
     save_team_to_db(new_team)
     await ctx.send(
         f"✅ Equipo agregado correctamente:\n"
         f"**Generación:** {generation}\n"
         f"**Link:** [Haz clic aquí]({url})"
     )
+
+@bot.command()
+async def modifystyle(ctx, url, *, new_style):
+    success = update_team_style(url, new_style)
+    if success:
+        await ctx.send(f"✏️ Estilo actualizado correctamente a **{new_style}** para el equipo {url}.")
+    else:
+        await ctx.send("❌ No se encontró ningún equipo con esa URL.")
 
 @bot.command()
 @commands.has_permissions(administrator=True)
@@ -220,6 +233,9 @@ async def create_embed(pages, page_num, all_teams, color):
     teams = pages[page_num]
     for i, team in enumerate(teams, 1 + page_num * 5):
         team_info = ""
+        style = team.get("style")
+        if style:
+            team_info += f"**Estilo:** {style}\n"
         pokemon_list = get_team_pokemon(team.get("url"))
         if pokemon_list and all(p not in ["No encontrado", "Error al acceder", "Error al scrapear"] for p in pokemon_list):
             team_info += f"**Pokémon:** {', '.join(['**' + p + '**' for p in pokemon_list])}\n"
@@ -232,7 +248,8 @@ async def create_embed(pages, page_num, all_teams, color):
 @bot.command()
 async def help(ctx):
     embed = discord.Embed(title="📘 Comandos disponibles", color=0x3498db)
-    embed.add_field(name="!addteam [gen] [url]", value="Agrega un equipo (admin solamente)", inline=False)
+    embed.add_field(name="!addteam [gen] [url] o !addteam [gen] [estilo] [url]", value="Agrega un equipo", inline=False)
+    embed.add_field(name="!modifystyle [url] [nuevo estilo]", value="Modifica el estilo de un equipo existente", inline=False)
     embed.add_field(name="!deleteteam [url]", value="Elimina un equipo por URL (admin solamente)", inline=False)
     embed.add_field(name="!deletebanned [gen] [pokemon]", value="Elimina todos los equipos con ese Pokémon en esa gen (admin)", inline=False)
     embed.add_field(name="!team [gen] [opcional: pokemon]", value="Busca equipos por generación y opcionalmente por Pokémon", inline=False)
@@ -244,5 +261,6 @@ async def on_ready():
     print(f"{bot.user} está en línea.")
 
 bot.run(TOKEN)
+
 
 
