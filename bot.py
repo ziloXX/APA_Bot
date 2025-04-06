@@ -74,7 +74,11 @@ def get_team_pokemon(url):
                 first_line = pre_text.split("\n")[0].strip()
                 pokemon_name = first_line.split("@")[0].strip()
                 pokemon_name_clean = re.sub(r'\s*\(.*?\)|\s*Shiny:.*', '', pokemon_name).strip()
-                if pokemon_name_clean.lower() in POKEMON_NAMES:
+                
+                # 🔧 Normalización
+                pokemon_normalized = pokemon_name_clean.lower().replace("-", " ").replace("’", "'")
+
+                if pokemon_normalized in POKEMON_NAMES:
                     pokemon_list.append(pokemon_name_clean)
                 else:
                     pokemon_list.append("No encontrado")
