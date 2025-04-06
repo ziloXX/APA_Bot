@@ -73,19 +73,13 @@ def get_team_pokemon(url):
                 pre_text = pre_tag.get_text(strip=True)
                 first_line = pre_text.split("\n")[0].strip()
                 pokemon_name = first_line.split("@")[0].strip()
-
-                # ✅ Si tiene nickname, extrae lo que esté entre paréntesis
-                if "(" in pokemon_name and ")" in pokemon_name:
-                    inside = pokemon_name[pokemon_name.find("(")+1:pokemon_name.find(")")]
-                    name_to_check = inside.strip()
-                else:
-                    name_to_check = pokemon_name.strip()
-
+                pokemon_name_clean = re.sub(r'\s*\(.*?\)|\s*Shiny:.*', '', pokemon_name).strip()
+                
                 # 🔧 Normalización
-                normalized = name_to_check.lower().replace("-", " ").replace("’", "'")
+                pokemon_normalized = pokemon_name_clean.lower().replace("-", " ").replace("’", "'")
 
-                if normalized in POKEMON_NAMES:
-                    pokemon_list.append(name_to_check)
+                if pokemon_normalized in POKEMON_NAMES:
+                    pokemon_list.append(pokemon_name_clean)
                 else:
                     pokemon_list.append("No encontrado")
             else:
@@ -170,7 +164,7 @@ async def deleteteam(ctx, url):
         return
     eliminado = delete_team_from_db(url)
     if eliminado:
-        await ctx.send(f"✅ Equipo con URL `{url}` eliminado correctamente.")
+        await ctx.send(f"✅ Equipo con URL {url} eliminado correctamente.")
     else:
         await ctx.send(f"❌ No se encontró ningún equipo con esa URL.")
 
@@ -271,6 +265,5 @@ async def on_ready():
     print(f"{bot.user} está en línea.")
 
 bot.run(TOKEN)
-
 
 
