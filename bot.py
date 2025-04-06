@@ -39,7 +39,7 @@ POKEMON_LIST_FILE = "pokemon_list.json"
 intents = discord.Intents.default()
 intents.message_content = True
 intents.reactions = True
-bot = commands.Bot(command_prefix=PREFIX, intents=intents)
+bot = commands.Bot(command_prefix=PREFIX, intents=intents, help_command=None)
 
 # Cargar la lista de Pokémon al iniciar el bot
 with open(POKEMON_LIST_FILE, "r", encoding="utf-8") as f:
