@@ -74,21 +74,21 @@ def get_team_pokemon(url):
                 first_line = pre_text.split("\n")[0].strip()
                 name_part = first_line.split("@")[0].strip()
 
-                # Manejo de nombres con o sin apodos
+                # Extraer el nombre real del Pokémon
                 if "(" in name_part and ")" in name_part:
-                    # Tiene apodo, extraemos el nombre real dentro de los paréntesis
-                    nickname_match = re.search(r'\(([^)]+)\)', name_part)
-                    if nickname_match:
-                        pokemon_name_clean = nickname_match.group(1).strip()
-                    else:
-                        pokemon_name_clean = name_part
+                    # Tiene apodo → capturar texto entre paréntesis
+                    pokemon_name_clean = re.search(r"\(([^)]+)\)", name_part)
+                    pokemon_name_clean = pokemon_name_clean.group(1).strip() if pokemon_name_clean else name_part
                 else:
-                    # No tiene apodo, usamos directamente el nombre
+                    # No tiene apodo → usar todo el nombre directamente
                     pokemon_name_clean = name_part
 
-                if pokemon_name_clean.lower().replace(" ", "-") in POKEMON_NAMES:
+                # Normalizar nombre y comparar
+                normalized_name = pokemon_name_clean.lower().replace(" ", "-")
+                if normalized_name in POKEMON_NAMES:
                     pokemon_list.append(pokemon_name_clean)
                 else:
+                    print(f"❌ No se reconoció: {pokemon_name_clean}")
                     pokemon_list.append("No encontrado")
             else:
                 pokemon_list.append("No encontrado")
