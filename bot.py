@@ -131,14 +131,15 @@ async def addteam(ctx, generation, style, url):
     if not url.startswith("https://pokepast.es/"):
         await ctx.send("Error: La URL debe ser de PokePast (https://pokepast.es/).")
         return
-    new_team = {"generation": generation, "style": style, "url": url}
+    # Comentamos estilo hasta nuevo aviso
+    new_team = {"generation": generation, "url": url}  # "style": style, eliminado
     save_team_to_db(new_team)
     await ctx.send(
-    f"✅ Equipo agregado correctamente:\n"
-    f"**Generación:** {generation}\n"
-    f"**Estilo:** {style}\n"
-    f"**Link:** [Haz clic aquí]({url})"
-)
+        f"✅ Equipo agregado correctamente:\n"
+        f"**Generación:** {generation}\n"
+        # f"**Estilo:** {style}\n"  # Comentado
+        f"**Link:** [Haz clic aquí]({url})"
+    )
 
 @bot.command()
 @commands.has_permissions(administrator=True)
@@ -164,7 +165,7 @@ async def deletebanned(ctx, generation, *, pokemon):
 @bot.command()
 async def team(ctx, *args):
     if not args:
-        await ctx.send("Uso: !team <generación> [estilo o Pokémon]")
+        await ctx.send("Uso: !team <generación> [Pokémon]")
         return
     args = [arg.lower() for arg in args]
     generation = args[0]
@@ -177,16 +178,12 @@ async def team(ctx, *args):
 
     if len(args) > 1:
         filter_value = " ".join(args[1:])
-        style_teams = [team for team in filtered_teams if team.get("style", "").lower() == filter_value]
-        if style_teams:
-            filtered_teams = style_teams
-        else:
-            final_teams = []
-            for team in filtered_teams:
-                pokemon_list = get_team_pokemon(team.get("url"))
-                if pokemon_list and filter_value in [p.lower() for p in pokemon_list]:
-                    final_teams.append(team)
-            filtered_teams = final_teams
+        final_teams = []
+        for team in filtered_teams:
+            pokemon_list = get_team_pokemon(team.get("url"))
+            if pokemon_list and filter_value in [p.lower() for p in pokemon_list]:
+                final_teams.append(team)
+        filtered_teams = final_teams
 
     if not filtered_teams:
         await ctx.send("No se encontraron equipos con esos filtros.")
@@ -224,7 +221,7 @@ async def create_embed(pages, page_num, all_teams, color):
     embed = discord.Embed(title=f"Equipos encontrados (Página {page_num + 1}/{len(pages)})", color=color)
     teams = pages[page_num]
     for i, team in enumerate(teams, 1 + page_num * 5):
-        team_info = f"**Estilo:** {team.get('style', 'Desconocido')}\n"
+        team_info = ""  # Estilo eliminado
         pokemon_list = get_team_pokemon(team.get("url"))
         if pokemon_list and all(p not in ["No encontrado", "Error al acceder", "Error al scrapear"] for p in pokemon_list):
             team_info += f"**Pokémon:** {', '.join(['**' + p + '**' for p in pokemon_list])}\n"
@@ -239,3 +236,4 @@ async def on_ready():
     print(f"{bot.user} está en línea.")
 
 bot.run(TOKEN)
+
