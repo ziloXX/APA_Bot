@@ -127,17 +127,15 @@ def delete_teams_by_generation_and_pokemon(generation, pokemon_name):
 
 @bot.command()
 @commands.has_permissions(administrator=True)
-async def addteam(ctx, generation, style, url):
+async def addteam(ctx, generation, url):
     if not url.startswith("https://pokepast.es/"):
         await ctx.send("Error: La URL debe ser de PokePast (https://pokepast.es/).")
         return
-    # Comentamos estilo hasta nuevo aviso
-    new_team = {"generation": generation, "url": url}  # "style": style, eliminado
+    new_team = {"generation": generation, "url": url}
     save_team_to_db(new_team)
     await ctx.send(
         f"✅ Equipo agregado correctamente:\n"
         f"**Generación:** {generation}\n"
-        # f"**Estilo:** {style}\n"  # Comentado
         f"**Link:** [Haz clic aquí]({url})"
     )
 
@@ -221,7 +219,7 @@ async def create_embed(pages, page_num, all_teams, color):
     embed = discord.Embed(title=f"Equipos encontrados (Página {page_num + 1}/{len(pages)})", color=color)
     teams = pages[page_num]
     for i, team in enumerate(teams, 1 + page_num * 5):
-        team_info = ""  # Estilo eliminado
+        team_info = ""
         pokemon_list = get_team_pokemon(team.get("url"))
         if pokemon_list and all(p not in ["No encontrado", "Error al acceder", "Error al scrapear"] for p in pokemon_list):
             team_info += f"**Pokémon:** {', '.join(['**' + p + '**' for p in pokemon_list])}\n"
@@ -231,9 +229,20 @@ async def create_embed(pages, page_num, all_teams, color):
         embed.add_field(name=f"Equipo {i}", value=team_info, inline=False)
     return embed
 
+@bot.command()
+async def help(ctx):
+    embed = discord.Embed(title="📘 Comandos disponibles", color=0x3498db)
+    embed.add_field(name="!addteam [gen] [url]", value="Agrega un equipo (admin solamente)", inline=False)
+    embed.add_field(name="!deleteteam [url]", value="Elimina un equipo por URL (admin solamente)", inline=False)
+    embed.add_field(name="!deletebanned [gen] [pokemon]", value="Elimina todos los equipos con ese Pokémon en esa gen (admin)", inline=False)
+    embed.add_field(name="!team [gen] [opcional: pokemon]", value="Busca equipos por generación y opcionalmente por Pokémon", inline=False)
+    embed.add_field(name="!help", value="Muestra esta lista de comandos", inline=False)
+    await ctx.send(embed=embed)
+
 @bot.event
 async def on_ready():
     print(f"{bot.user} está en línea.")
 
 bot.run(TOKEN)
+
 
