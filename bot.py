@@ -188,12 +188,20 @@ async def team(ctx, *args):
         await ctx.send("No se encontraron equipos para esa generacion.")
         return
 
-    if len(args) > 1:
-        filter_value = " ".join(args[1:])
+if len(args) > 1:
+    filter_value = " ".join(args[1:]).lower()
+
+    # 🔍 Intentar primero por estilo
+    style_filtered = [team for team in filtered_teams if team.get("style", "").lower() == filter_value]
+
+    if style_filtered:
+        filtered_teams = style_filtered
+    else:
+        # Si no hay coincidencias por estilo, buscar por Pokémon
         final_teams = []
         for team in filtered_teams:
             pokemon_list = get_team_pokemon(team.get("url"))
-            if pokemon_list and filter_value in [p.lower() for p in pokemon_list]:
+            if pokemon_list and filter_value in [p.lower().replace("-", " ") for p in pokemon_list]:
                 final_teams.append(team)
         filtered_teams = final_teams
 
