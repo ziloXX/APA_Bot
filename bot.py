@@ -177,30 +177,21 @@ async def deletebanned(ctx, generation, *, pokemon):
 @bot.command()
 async def team(ctx, *args):
     if not args:
-        await ctx.send("Uso: !team <generación> [Pokémon o estilo]")
+        await ctx.send("Uso: !team <generación> [filtros opcionales]")
         return
 
     args = [arg.lower() for arg in args]
     generation = args[0]
+    filters = args[1:]  # puede contener estilo y/o pokemon
+
     teams = load_teams_from_db()
     filtered_teams = [team for team in teams if team.get("generation", "").lower() == generation]
 
-    if not filtered_teams:
-        await ctx.send("No se encontraron equipos para esa generacion.")
-        return
-
-    if len(args) > 1:
-        filter_value = " ".join(args[1:])
-        style_teams = [team for team in filtered_teams if team.get("style", "").lower() == filter_value.lower()]
-        if style_teams:
-            filtered_teams = style_teams
-        else:
-            final_teams = []
-            for team in filtered_teams:
-                pokemon_list = get_team_pokemon(team.get("url"))
-                if pokemon_list and filter_value.replace("-", " ") in [p.lower().replace("-", " ") for p in pokemon_list]:
-                    final_teams.append(team)
-            filtered_teams = final_teams
+    for f in filters:
+        filtered_teams = [team for team in filtered_teams if (
+            f in team.get("style", "").lower() or
+            f.replace("-", " ") in [p.lower().replace("-", " ") for p in get_team_pokemon(team.get("url"))]
+        )]
 
     if not filtered_teams:
         await ctx.send("No se encontraron equipos con esos filtros.")
@@ -258,7 +249,7 @@ async def help(ctx):
     embed.add_field(name="!modifystyle [url] [nuevo estilo]", value="Modifica el estilo de un equipo existente", inline=False)
     embed.add_field(name="!deleteteam [url]", value="Elimina un equipo por URL (admin solamente)", inline=False)
     embed.add_field(name="!deletebanned [gen] [pokemon]", value="Elimina todos los equipos con ese Pokémon en esa gen (admin)", inline=False)
-    embed.add_field(name="!team [gen] [opcional: pokemon o estilo]", value="Busca equipos por generación y opcionalmente por Pokémon o estilo", inline=False)
+    embed.add_field(name="!team [gen] [opcional: filtros]", value="Busca equipos por generación y opcionalmente por estilo y/o Pokémon", inline=False)
     embed.add_field(name="!help", value="Muestra esta lista de comandos", inline=False)
     await ctx.send(embed=embed)
 
