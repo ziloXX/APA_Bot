@@ -64,26 +64,23 @@ def get_team_pokemon(url):
             return ["Error al acceder"] * 6
 
         soup = BeautifulSoup(response.text, "html.parser")
-        pokemon_blocks = soup.find_all("article")
-        pokemon_list = []
+        full_text = soup.get_text().lower().replace("-", " ")
 
-        for block in pokemon_blocks[:6]:
-            pre_tag = block.find("pre")
-            if pre_tag:
-                pre_text = pre_tag.get_text(strip=True)
-                first_line = pre_text.split("\n")[0].strip()
-                pokemon_name = first_line.split("@")[0].strip()
-                pokemon_name_clean = re.sub(r'\s*\(.*?\)|\s*Shiny:.*', '', pokemon_name).strip()
-                
-                # 🔧 Normalización
-                pokemon_normalized = pokemon_name_clean.lower().replace("-", " ").replace("’", "'")
+        found_pokemon = []
+        used_positions = set()
+        for pokemon in POKEMON_NAMES:
+            matches = [m.start() for m in re.finditer(rf'\b{re.escape(pokemon)}\b', full_text)]
+            for pos in matches:
+                if pos not in used_positions:
+                    found_pokemon.append((pos, pokemon))
+                    used_positions.add(pos)
+                if len(found_pokemon) >= 6:
+                    break
+            if len(found_pokemon) >= 6:
+                break
 
-                if pokemon_normalized in POKEMON_NAMES:
-                    pokemon_list.append(pokemon_name_clean)
-                else:
-                    pokemon_list.append("No encontrado")
-            else:
-                pokemon_list.append("No encontrado")
+        found_pokemon.sort()
+        pokemon_list = [name.title().replace(" ", "-") for _, name in found_pokemon]
 
         while len(pokemon_list) < 6:
             pokemon_list.append("No encontrado")
@@ -164,7 +161,7 @@ async def deleteteam(ctx, url):
         return
     eliminado = delete_team_from_db(url)
     if eliminado:
-        await ctx.send(f"✅ Equipo con URL {url} eliminado correctamente.")
+        await ctx.send(f"✅ Equipo con URL `{url}` eliminado correctamente.")
     else:
         await ctx.send(f"❌ No se encontró ningún equipo con esa URL.")
 
